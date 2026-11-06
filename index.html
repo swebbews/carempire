@@ -107,11 +107,95 @@ try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&typeof s==="object"){con
  if(!isFinite(state.player.x)||!isFinite(state.player.y))state.player={x:0,y:110}}}catch(e){}
 const SLOTS=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)SLOTS.push({x:-165+c*110,y:-90+r*70});
 const cars=[],customers=[],trees=[],buildings=[];let driving=null;
-const CAT=[[0,"Dacia Sandero",9500],[0,"Dacia Duster",14500],[0,"Dacia Jogger",13000],[0,"Fiat 500",13500],[0,"Fiat Panda",11500],[0,"Fiat Tipo",15500],
-[1,"VW Golf GTI",38000],[1,"Ford Mustang GT",47000],[1,"Audi RS3",62000],[1,"BMW M3",82000],
+const CAT=[[0,"Dacia Sandero",9500],[0,"Dacia Duster",14500],[0,"Dacia Jogger",13000],[0,"Fiat 500",13500],[0,"Fiat Panda",11500],[0,"Fiat Tipo",15500],[0,"Skoda Fabia",12500],[0,"Skoda Kamiq",18500],[0,"Skoda Octavia",21500],
+[1,"VW Golf GTI",38000],[1,"Skoda Kodiaq",41000],[1,"Skoda Octavia RS",44000],[1,"Ford Mustang GT",47000],[1,"Skoda Superb",49000],[1,"Audi RS3",62000],[1,"BMW M3",82000],
 [2,"Porsche 911",145000],[2,"Mercedes AMG GT",165000],[2,"Aston Martin DB12",225000],[2,"Bentley Continental",240000],
 [3,"Lamborghini Huracan",290000],[3,"Ferrari 296 GTB",330000],[3,"McLaren 750S",340000],[3,"Lamborghini Revuelto",600000],
 [4,"Bugatti Veyron",1900000],[4,"Bugatti Chiron",3200000],[4,"Bugatti Divo",5500000]].map(a=>({t:a[0],n:a[1],v:a[2]}));
+const TIERS=["Economy","Sport","Luxury","Supercar","Hypercar"],REQ=[1,1,2,3,4];
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":Math.round(n).toLocaleString();
+const pick=t=>{const l=CAT.filter(c=>c.t===t);return l[Math.floor(Math.random()*l.length)]};
+const rnd0=()=>COLORS[Math.floor(Math.random()*COLORS.length)];
+function addCar(x,y,price,color,name){const c={x,y,price,color:color||rnd0(),angle:0,name:name||"Used car"};cars.push(c);return c}
+if(Array.isArray(state.cars)){state.cars.forEach(c=>{if(c&&isFinite(c.x)&&isFinite(c.y)&&isFinite(c.price))addCar(c.x,c.y,c.price,c.color,c.name).angle=c.angle||0})}
+else{addCar(-55,50,13500,"#d83d3d","Fiat 500");addCar(55,50,14500,"#e8eaf0","Dacia Duster")}
+if(state.carMode&&cars[state.carIndex])driving=cars[state.carIndex];else state.carMode=false;
+const cap=()=>Math.min(16,3+state.showroom*3);
+// ---------- world ----------
+const WX=3480,WY=3160; // world half-size: 6960 x 6320 = 10x the old 2200 x 2000 map
+const V=[-900,-520,520,900],HR=[-750,-420,330,700],DEAL={x:-190,y:-245,w:380,h:90};
+for(let i=0;i<6;i++){const o=1300+i*400;V.push(-o,o)}
+for(let i=0;i<6;i++){const o=1100+i*400;HR.push(-o,o)}
+const rivals=[{name:"DACIA, FIAT & SKODA",tier:0,x:-710,y:-50,col:"#2e7d4f"},{name:"BARGAIN CARS",tier:0,x:0,y:515,col:"#d9822b"},{name:"SPEEDY MOTORS",tier:1,x:710,y:-50,col:"#b8372b"},{name:"MOTOR PLAZA",tier:1,x:0,y:-585,col:"#2a6fb0"},{name:"EURO LUXE",tier:2,x:-710,y:515,col:"#7d3c98"},{name:"LUXE AUTO",tier:2,x:710,y:515,col:"#555a66"},{name:"SUPERCAR CLUB",tier:3,x:-710,y:-585,col:"#c9a227"},{name:"HYPERCAR HOUSE",tier:4,x:710,y:-585,col:"#111111"}].map(r=>(r.cars=[],r));
+function restock(r){while(r.cars.length<4){const i=r.cars.length,m=pick(r.tier);r.cars.push({x:r.x-96+i*64,y:r.y+20,name:m.n,price:m.v,cost:Math.round(m.v*.82/100)*100,color:rnd0(),angle:0})}}
+rivals.forEach(restock);
+let seed=12345;const rnd=()=>{seed=(seed+0x6D2B79F5)|0;let t=Math.imul(seed^(seed>>>15),1|seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296};
+const hit=(a,b,m)=>a.x<b.x+b.w+m&&a.x+a.w+m>b.x&&a.y<b.y+b.h+m&&a.y+a.h+m>b.y;
+const noGo=[{x:-330,y:-345,w:660,h:620}].concat(rivals.map(r=>({x:r.x-150,y:r.y-110,w:300,h:220})));
+function free(b,m,list){return !V.some(v=>hit(b,{x:v-35,y:-WY-100,w:70,h:2*WY+200},m))&&!HR.some(h=>hit(b,{x:-WX-100,y:h-29,w:2*WX+200,h:58},m))&&!noGo.some(n=>hit(b,n,0))&&!list.some(o=>hit(b,o,m))}
+const BC=["#647887","#7d8588","#8b7969","#586d72"];
+for(let i=0;i<6000&&buildings.length<340;i++){const b={x:(rnd()-.5)*2*(WX-150),y:(rnd()-.5)*2*(WY-150),w:80+rnd()*100,h:70+rnd()*80,c:BC[i%4],z:22+rnd()*30};if(free(b,16,buildings))buildings.push(b)}
+for(let i=0;i<4000&&trees.length<450;i++){const r=9+rnd()*8,t={x:(rnd()-.5)*2*(WX-60),y:(rnd()-.5)*2*(WY-60),r};if(free({x:t.x-r,y:t.y-r,w:2*r,h:2*r},6,buildings))trees.push(t)}
+const solids=buildings.concat([DEAL]);
+// ---------- city traffic ----------
+const traffic=[];
+function syncT(t){if(t.ax==="v"){t.x=t.lat;t.y=t.pos}else{t.x=t.pos;t.y=t.lat}}
+function newTraffic(near){
+ const ax=Math.random()<.5?"v":"h",all=ax==="v"?V:HR,roads=near?all.filter(r=>Math.abs(r)<=1500):all,road=roads[Math.floor(Math.random()*roads.length)],dir=Math.random()<.5?1:-1,lim=ax==="v"?WY:WX;
+ const t={ax,road,dir,pos:(Math.random()*2-1)*(near?1500:lim-120),v:0,vmax:55+Math.random()*50,name:CAT[Math.floor(Math.pow(Math.random(),1.5)*CAT.length)].n,color:rnd0(),angle:0,x:0,y:0,stuck:0,ign:0,tc:0};
+ t.lat=road+(ax==="v"?-dir:dir)*15;t.angle=ax==="v"?(dir>0?Math.PI/2:-Math.PI/2):(dir>0?0:Math.PI);syncT(t);traffic.push(t)}
+for(let i=0;i<360;i++)newTraffic(i%2);
+// ---------- helpers ----------
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const nearest=(list,p)=>list.reduce((m,c)=>!m||dist(c,p)<dist(m,p)?c:m,null);
+let paused=false,toastT=0,hintT=0,resetting=false;
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove("show"),2400)}
+function showHint(h,sec){$("hint").innerHTML=h;$("hint").style.display="block";clearTimeout(hintT);if(sec)hintT=setTimeout(()=>$("hint").style.display="none",sec*1000)}
+function save(quiet){if(resetting)return;try{state.cars=cars.map(c=>({x:c.x,y:c.y,price:c.price,color:c.color,angle:c.angle,name:c.name}));state.carMode=!!driving;state.carIndex=Math.max(0,cars.indexOf(driving));localStorage.setItem(KEY,JSON.stringify(state));if(!quiet)toast("Progress saved on this device!")}catch(e){if(!quiet)toast("Could not save (storage blocked).")}}
+const upCost=()=>100000*state.showroom*state.showroom,hireCost=()=>40000*(state.staff+1),adCost=()=>20000;
+const ordCost=m=>Math.round(m.v*.88);
+function updateHud(){
+ $("money").textContent="$"+Math.floor(state.money).toLocaleString();$("stock").textContent=cars.length;$("rep").textContent=state.rep;$("day").textContent=state.day;
+ TIERS.forEach((n,t)=>{const lo=Math.min(...CAT.filter(c=>c.t===t).map(c=>c.v));$("ord"+t).innerHTML="Order "+n+" (Lv "+REQ[t]+") <span>from $"+fmt(ordCost({v:lo}))+"</span>"});
+ $("upgrade").innerHTML="Upgrade showroom (Lv "+state.showroom+") <span>"+(state.showroom>=5?"MAX":"$"+fmt(upCost()))+"</span>";
+ $("hire").innerHTML="Hire salesperson ("+state.staff+"/4) <span>"+(state.staff>=4?"FULL":"$"+fmt(hireCost()))+"</span>";
+ $("advertise").innerHTML="Local advertising <span>$"+fmt(adCost())+"</span>";
+ $("driveBtn").textContent=driving?"🚪 EXIT CAR":"🚗 ENTER CAR";
+ $("mission").textContent=state.sales===0?"STEP 1: Walk to a parked car and tap SELL CAR. That is your first sale!":state.sales<3?"STEP 2: Earn money from sales. Open MENU and order more cars for your showroom.":"Great work! "+state.sales+" sales completed. Buy cars, upgrade the showroom, hire staff and beat the rivals.";
+ $("rivalInfo").innerHTML="Customers lost to rivals: <b>"+state.lost+"</b><br>Staff wages: $1,500 per salesperson per day<br>"+rivals.map(r=>r.name+" - "+TIERS[r.tier]).join("<br>")+"<br>Walk up to a shop car and tap ENTER CAR to buy it below market price, then drive it home and sell it.";
+}
+function orderCar(t){if(state.showroom<REQ[t])return toast("Reach showroom Lv "+REQ[t]+" to order "+TIERS[t]+" cars.");if(cars.length>=cap())return toast("Showroom full! Sell a car or upgrade the showroom.");const m=pick(t),cost=ordCost(m);if(state.money<cost)return toast("Not enough money! "+m.n+" costs $"+cost.toLocaleString());const s=SLOTS.find(s=>!cars.some(c=>Math.hypot(c.x-s.x,c.y-s.y)<40));if(!s)return toast("No free parking space!");state.money-=cost;addCar(s.x,s.y,m.v,null,m.n);toast("Delivered: "+m.n+" (paid $"+cost.toLocaleString()+")");updateHud();save(true)}
+{const cat=$("catalog");TIERS.forEach((n,t)=>{const b=document.createElement("button");b.id="ord"+t;b.onclick=()=>orderCar(t);cat.appendChild(b)})}
+function upgrade(){if(state.showroom>=5)return toast("Showroom is already max level!");if(state.money<upCost())return toast("You need $"+upCost().toLocaleString()+"!");state.money-=upCost();state.showroom++;toast("Showroom upgraded! New car classes unlocked.");updateHud();save(true)}
+function hire(){if(state.staff>=4)return toast("Your team is already fully staffed!");if(state.money<hireCost())return toast("You need $"+hireCost().toLocaleString()+"!");state.money-=hireCost();state.staff++;toast("A new salesperson joined! Sales are boosted.");updateHud();save(true)}
+function advertise(){if(state.money<adCost())return toast("You need $"+adCost().toLocaleString()+"!");state.money-=adCost();state.ads++;for(let i=0;i<3;i++)spawnCustomer(true);toast("Advertising campaign launched!");updateHud();save(true)}
+function interact(){
+ const p=state.player;
+ if(driving){driving=null;state.carMode=false;p.x+=0;p.y+=34;toast("You stepped out of the car.");updateHud();return}
+ const c=nearest(cars,p);if(c&&dist(c,p)<60){driving=c;state.carMode=true;p.x=c.x;p.y=c.y;toast("You are driving! Joystick or WASD to cruise.");updateHud();return}
+ for(const r of rivals){const rc=nearest(r.cars,p);if(rc&&dist(rc,p)<60){
+  if(cars.length>=cap())return toast("Your showroom is full! Sell a car or upgrade first.");
+  if(state.money<rc.cost)return toast("You need $"+rc.cost.toLocaleString()+" for this car.");
+  state.money-=rc.cost;r.cars.splice(r.cars.indexOf(rc),1);cars.push(rc);driving=rc;state.carMode=true;p.x=rc.x;p.y=rc.y;toast("Bought from "+r.name+"! Drive it home and sell it.");updateHud();save(true);return}}
+ toast("Walk closer to a car to enter it.");
+}
+function sell(){
+ const p=state.player,c=nearest(cars.filter(x=>x!==driving),p);
+ if(!c||dist(c,p)>105)return toast(driving?"Exit the car, then stand near a car to sell it.":"Get closer to a showroom car to complete a sale.");
+ const cu=customers.find(q=>!q.rival&&dist(q,p)<145);
+ const earned=Math.round(c.price*(1+state.staff*.01+state.rep*.002+(state.showroom-1)*.01)*(cu?1.05:1));
+ cars.splice(cars.indexOf(c),1);if(cu)customers.splice(customers.indexOf(cu),1);
+ addFloat(c.x,c.y-20,"+$"+fmt(earned));state.money+=earned;state.sales++;state.rep=Math.min(99,state.rep+1);
+ toast("SOLD! You earned $"+earned.toLocaleString()+(cu?" (customer bonus)":"")+"!");
+ if(state.sales===1)showHint("<b>NICE WORK!</b><br>Open MENU to buy another car, upgrade your showroom or hire staff.",9);
+ updateHud();save(true);
+}
+// ---------- customers ----------
+function spawnCustomer(force){
+ if(!force&&customers.filter(q=>!q.rival).length>=4+state.showroom*2)return;
+ const rv=Math.random()<Math.max(.05,Math.min(.45,.18+(state.day-1)*.01-state.rep*.003-state.ads*.02-(state.showroom-1)*.03));
+ const q={x:(Math.random()-.5)*500,y:235,color:["#d6a57b","#a9c3d8","#d2b3d8"][Math.floor(Math.random()*3)],st:"walk",pat:30+Math.random()*30,rival:false};
+ if(rv||!cars.length){const r=rivals[Math.floor(Ma Veyron",1900000],[4,"Bugatti Chiron",3200000],[4,"Bugatti Divo",5500000]].map(a=>({t:a[0],n:a[1],v:a[2]}));
 const TIERS=["Economy","Sport","Luxury","Supercar","Hypercar"],REQ=[1,1,2,3,4];
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?Math.round(n/1e3)+"k":Math.round(n).toLocaleString();
 const pick=t=>{const l=CAT.filter(c=>c.t===t);return l[Math.floor(Math.random()*l.length)]};
